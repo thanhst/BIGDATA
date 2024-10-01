@@ -1,0 +1,130 @@
+
+.d_flex{
+    display: flex;
+}
+.justify_center{
+    justify-content: center;
+}
+.align_center{
+    align-items: center;
+}
+.justify_between{
+    justify-content: space-between;
+}
+.justify_around{
+    justify-content: space-around;
+}
+.main{
+    width:100%;
+    height:100%;
+}
+.title {
+    font-size: 32px;
+    font-family: 'Courier New', Courier, monospace;
+    display: flex;
+    justify-content: center;
+}
+
+.mongoDB {
+    color: #00ed64;
+}
+
+.cassandra {
+    color: #1183ab;
+}
+
+.div_mongoDB {
+    height: 50vh;
+    overflow: scroll;
+    font-size: 18px;
+}
+
+.div_cassandra {
+    height: 50vh;
+    overflow: scroll;
+    font-size: 20px;
+}
+
+.menu>ul {
+    display: flex;
+    list-style: none;
+}
+
+.menu>ul>li {
+    margin: 10px;
+    background-color: beige;
+    padding: 10px;
+    border-radius: 10px;
+    border: 1px solid black;
+    box-shadow: 2px 2px 1px black;
+}
+
+.insert {
+    background-color: rgb(0, 119, 255) !important;
+    color: white;
+}
+
+.insert:hover {
+    background-color: rgb(176, 213, 255) !important;
+    color: black;
+}
+
+.delete {
+    background-color: red !important;
+    color: white;
+}
+
+.delete:hover {
+    background-color: rgb(255, 168, 168) !important;
+    color: black;
+}
+
+.menu>ul>li:hover {
+    cursor: pointer;
+    background-color: rgba(252, 252, 127, 0.623);
+}
+
+.menu>ul>li:active {
+    box-shadow: 1px 1px 0.5px black;
+    color: rgba(0, 0, 0, 0.646);
+}
+
+.active {
+    box-shadow: 1px 1px 0.5px rgb(0, 0, 0) !important;
+    color: rgba(0, 0, 0, 0.646);
+}
+.line{
+    margin-top:80px;
+    margin-bottom:20px;
+    background-color: black;
+    height:1px;
+}
+.line>h3{
+    position: absolute;
+    left:50px;
+    top:195px;
+    background-color: white;
+    padding:10px;
+}
+
+.border{
+    border:1px solid black;
+}
+.speed_search_box{
+    width:200px;
+    position: absolute;
+}
+.speed_search_box th,td{
+    padding:10px;
+}
+.table_select{
+    height:50px;
+    border-radius: 10px;
+    margin-right:200px;
+    padding:10px;
+    font-size:17px;
+}
+.mongoQuery,.cassandraQuery{
+    padding:20px;
+    font-size:18px;
+}
