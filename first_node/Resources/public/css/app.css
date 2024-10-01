@@ -1,0 +1,9 @@
+.text {
+  color: rgba(255, 1, 1, 0.3);
+  font-size: 32px; }
+
+.background-gray {
+  background-color: gray; }
+
+.net {
+  background-color: rgba(255, 1, 1, 0.3); }
