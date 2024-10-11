@@ -76,6 +76,9 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const { Client } = require('cassandra-driver');
+const dotenv = require('dotenv');
+dotenv.config();
+
 const app = express();
 const port = 3000;
 // 13.215.45.194
@@ -83,14 +86,32 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+const dbname = process.env.DB_DATABASE
 // Kết nối với MongoDB
-mongoose.connect('mongodb://localhost:27017/bigdata', {
+mongoose.connect(`mongodb://localhost:27017/${dbname}`, {
   useNewUrlParser: true,
 });
+async function reconnectMongo() {
+  while (true) {
+    try {
+      console.log('Reconnected to MongoDB');
+      await mongoose.connect(`mongodb://localhost:27017/${dbname}`, { useNewUrlParser: true });
+      break; // Thoát vòng lặp khi kết nối thành công
+    } catch (err) {
+      console.error('Retrying MongoDB connection:');
+      await new Promise((resolve) => setTimeout(resolve, 1000)); // Chờ 5 giây trước khi thử lại
+    }
+  }
+}
+
 
 // Kiểm tra kết nối
 mongoose.connection.on('connected', () => {
   console.log('Connected to MongoDB');
+});
+mongoose.connection.on('error', (err) => {
+  console.error('MongoDB connection error');
+  reconnectMongo();
 });
 
 
@@ -99,7 +120,7 @@ mongoose.connection.on('connected', () => {
 const client = new Client({
   contactPoints: ['localhost:9042'], // Địa chỉ IP của server Cassandra
   localDataCenter: 'datacenter1', // Tên datacenter của bạn
-  keyspace: 'bigdata' // Tên keyspace mà bạn muốn làm việc
+  keyspace: `${dbname}` // Tên keyspace mà bạn muốn làm việc
 });
 async function connect() {
   try {
@@ -107,10 +128,11 @@ async function connect() {
     console.log('Connected to Cassandra');
   } catch (error) {
     console.error('Connection error', error);
+    setTimeout(connect, 1000);
   }
 }
 connect();
-const itemSchema = new mongoose.Schema({}, { strict: false ,versionKey: false});
+const itemSchema = new mongoose.Schema({}, { strict: false, versionKey: false });
 
 async function getCollections() {
   const collections = await mongoose.connection.db.listCollections().toArray();
@@ -124,11 +146,10 @@ async function getTables() {
 }
 
 async function getColumn(tableUse) {
-  const query = 'SELECT column_name,type FROM system_schema.columns WHERE keyspace_name = ? AND table_name = ?';
+  const query = 'SELECT column_name,type,kind FROM system_schema.columns WHERE keyspace_name = ? AND table_name = ?';
   try {
     // Thực thi truy vấn với tham số
     const result = await client.execute(query, ['bigdata', tableUse.toLowerCase()], { prepare: true });
-
     // Trả về danh sách tên các cột
     return result.rows
   } catch (error) {
@@ -136,11 +157,11 @@ async function getColumn(tableUse) {
     return [];
   }
 }
-async function getField(tableUse) {
-  const itemModel = mongoose.model('Item', itemSchema, tableUse);
-  const schemaFields = Object.keys(itemModel.schema.paths);
-  console.log(schemaFields);
-}
+// async function getField(tableUse) {
+//   const itemModel = mongoose.model('Item', itemSchema, tableUse);
+//   const schemaFields = Object.keys(itemModel.schema.paths);
+//   console.log(schemaFields);
+// }
 // Định nghĩa một schema và model
 // const flexibleSchema = new mongoose.Schema({}, { strict: false });
 
@@ -161,7 +182,6 @@ app.get('/mongoDB/getAllData', async (req, res) => {
     const itemModel = mongoose.model('Item', itemSchema, req.query.table);
     const table = await itemModel.find({}, { _id: 0 });
     const time_finding = Date.now() - data;
-    // console.log(time_finding);
     res.send({ table, time_finding });
   } catch (error) {
     // res.status(500).send(error);
@@ -219,7 +239,7 @@ const insertMongo = async (table, body) => {
   const data = Date.now();
   const savedItem = await newItem.save(); // Lưu đối tượng vào MongoDB
   const time_finding = Date.now() - data;
-  return {time_finding};
+  return { time_finding };
 }
 
 const insertCassandra = async (table, body) => {
@@ -231,24 +251,278 @@ const insertCassandra = async (table, body) => {
     const data = Date.now();
     await client.execute(query, Object.values(body), { prepare: true });
     const time_finding = Date.now() - data;
-    return {time_finding};
+    return { time_finding };
   } catch (error) {
     console.error('Có lỗi khi chèn vào Cassandra:', error);
     throw new Error('Chèn thất bại');
   }
 }
+const updateMongo = async (table, data, primarykey) => {
+  // const itemModel1 = mongoose.model('Item', itemSchema, req.query.table);
+  const itemModel = mongoose.model('Item', itemSchema, table);
+  // const table1 = await itemModel.find({IDClass: 23}, { _id: 0 },{ collation: { locale: 'en', strength: 2 } });
+
+
+  if (!primarykey) {
+    throw new Error('Missing _id in request body for MongoDB update');
+  }
+  const query = {};
+  const dataToUpdate = { ...data };
+
+  primarykey.forEach((key) => {
+    if (dataToUpdate.hasOwnProperty(key)) {
+      query[key] = dataToUpdate[key];
+      delete dataToUpdate[key];
+    } else {
+      throw new Error(`Missing primary key field: ${key} in data.`);
+    }
+  });
+  try {
+    const dataTime = Date.now();
+    const updatedItem = await itemModel.findOneAndUpdate(
+      query,
+      dataToUpdate,
+      { collation: { locale: 'en', strength: 2 } }
+    );
+    if (!updatedItem) {
+      throw new Error('Item not found in MongoDB with the provided primary keys');
+    }
+    const time_finding = Date.now() - dataTime;
+    return { time_finding };
+  } catch (error) {
+    throw new Error(`Error updating item: ${error.message}`);
+  }
+}
+
+
+const updateCassandra = async (table, data, primarykey) => {
+  const queryList = {};
+  const dataToUpdate = { ...data };
+
+  primarykey.forEach((key) => {
+    if (dataToUpdate.hasOwnProperty(key)) {
+      queryList[key] = dataToUpdate[key];
+      delete dataToUpdate[key];
+    } else {
+      throw new Error(`Missing primary key field: ${key} in data.`);
+    }
+  });
+
+  // console.log(primarykey)
+  const setClause = Object.keys(dataToUpdate).map(key => `${key} = ?`).join(', ');
+  const values = Object.values(dataToUpdate);
+
+  const primaryKeysClause = primarykey.map(key => `${key} = ?`).join(' AND ');
+  const primaryKeyValues = primarykey.map(key => queryList[key]);
+
+  values.push(...primaryKeyValues);
+
+  const query = `UPDATE ${table} SET ${setClause} WHERE ${primaryKeysClause}`;
+  const dataTime = Date.now();
+  await client.execute(query, values, { prepare: true });
+  const time_finding = Date.now() - dataTime;
+  return { time_finding };
+};
+
+const deleteMongo = async (table, primaryKeys) => {
+
+  const itemModel = mongoose.model('Item', itemSchema, table);
+
+  if (!primaryKeys || typeof primaryKeys !== 'object' || Array.isArray(primaryKeys) || Object.keys(primaryKeys).length === 0) {
+    throw new Error('Primary keys not found!!!');
+  }
+
+  // console.log('Đối tượng Query:', query);
+
+  try {
+    // Sử dụng findOneAndDelete với đối tượng truy vấn và collation để không phân biệt chữ hoa chữ thường
+    const dataTime = Date.now();
+    const deletedItem = await itemModel.findOneAndDelete(primaryKeys, {
+      collation: { locale: 'en', strength: 2 } // strength: 2 để không phân biệt chữ hoa chữ thường
+    });
+
+    if (!deletedItem) {
+      throw new Error('Item không tìm thấy trong MongoDB với các khóa chính đã cung cấp.');
+    }
+    const time_finding = Date.now() - dataTime;
+
+    // console.log('Tài liệu đã được xóa:', deletedItem);
+    return { time_finding };
+  } catch (error) {
+    throw new Error(`Lỗi khi xóa tài liệu: ${error.message}`);
+  }
+};
+
+const deleteCassandra = async (table, primaryKeys) => {
+  if (!primaryKeys || typeof primaryKeys !== 'object' || Array.isArray(primaryKeys) || Object.keys(primaryKeys).length === 0) {
+    throw new Error('Primary keys not found!!!');
+  }
+  try {
+    // console.log(primaryKeys)
+    const data = Object.values(primaryKeys)
+    const pkey = Object.keys(primaryKeys)
+
+    // const pkey = ["123",'456']
+    // const data = ["123",'456']
+    // const primaryKeyValues =pkey.map((key, index) => [key,data[index]])
+    // console.log(primaryKeyValues)
+
+    const primaryKeysClause = pkey.map(key => `${key} = ?`).join(' AND ');
+    const query = `Delete from ${table} where ${primaryKeysClause}`
+    const dataTime = Date.now();
+    await client.execute(query, data, { prepare: true });
+    const time_finding = Date.now() - dataTime;
+    return { time_finding };
+  }
+  catch (error) {
+    throw new Error(`Lỗi khi xóa tài liệu: ${error.message}`);
+  }
+}
+
 
 app.post('/post', async (req, res) => {
   try {
-    console.log('req.body:', req.body);
+    // console.log('req.body:', req.body);
     const itemMongo = await insertMongo(req.query.table, req.body);
     const itemCassandra = await insertCassandra(req.query.table, req.body);
-    res.status(201).json({itemMongo,itemCassandra}); // Trả về item đã lưu
+    res.status(201).json({ itemMongo, itemCassandra }); // Trả về item đã lưu
   }
   catch (error) {
     console.error(error)
   }
 })
+
+app.put('/put', async (req, res) => {
+  // console.log(req.body);
+  // console.log(req.query.primarykey)
+  try {
+    const table = req.query.table;
+    const data = req.body;
+    const primarykey = req.query.primarykey;
+    if (!table) {
+      return res.status(400).json({ error: 'Table name is required in query parameters' });
+    }
+    if (!data) {
+      return res.status(400).json({ error: 'Missing id in request body for update' });
+    }
+    const itemMongo = await updateMongo(table, data, primarykey);
+    const itemCassandra = await updateCassandra(table, data, primarykey);
+    res.status(200).json({ itemMongo, itemCassandra });
+  } catch (error) {
+    console.error('Error in PUT /put:', error);
+    res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
+})
+
+app.delete('/delete', async (req, res) => {
+  try {
+    const table = req.query.table;
+    const data = req.query.item;
+    // console.log(primarykeys)
+
+    if (!table) {
+      return res.status(400).json({ error: 'Table name is required in query parameters' });
+    }
+    if (!data) {
+      return res.status(400).json({ error: 'Missing data in request body for update' });
+    }
+    const itemMongo = await deleteMongo(table, data);
+    const itemCassandra = await deleteCassandra(table, data);
+    res.status(200).json({ itemMongo, itemCassandra });
+  } catch (error) {
+    console.error('Error in delete /delete:', error);
+    res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
+})
+const parseMongoCommand = (command) => {
+  // Bỏ qua 'db.' và tách các phần
+  const regex = /^db\.(\w+)\.(\w+)\((.*)\)$/; // Regex để phân tách câu lệnh
+  const matches = command.match(regex);
+
+  if (matches) {
+    const collection = matches[1];
+    const action = matches[2];
+    const args = matches[3].trim();
+    console.log(args)
+    // Tách các tham số nếu cần thiết
+    let parsedArgs = [];
+
+    if (action === 'find') {
+      // Giả sử chỉ có 1 tham số cho find
+      parsedArgs = args ? [JSON.parse(args)] : [{}]; // Điều kiện mặc định
+    } else if (action === 'insertOne' || action === 'insertMany') {
+      // Giả sử chỉ có 1 tham số cho insert
+      parsedArgs = [JSON.parse(args)];
+    } else if (action === 'update') {
+      // Tách filter và update từ args
+      const [filter, update] = args ? args.split(',').map(arg => JSON.parse(arg.trim())) : [{}, {}];
+      parsedArgs = [filter, update];
+    } else if (action === 'deleteOne' || action === 'deleteMany') {
+      // Giả sử chỉ có 1 tham số cho delete
+      parsedArgs = [JSON.parse(args)];
+    } else {
+      throw new Error('Unsupported action');
+    }
+
+    return { collection, action, args: parsedArgs };
+  } else {
+    throw new Error('Invalid command format');
+  }
+}
+app.post('/api/mongodb/execute', async (req, res) => {
+  const { query } = req.body; // Nhận lệnh từ người dùng
+
+  try {
+    // Phân tích lệnh
+    const commandParts = parseMongoCommand(query);
+    const collectionName = commandParts['collection']; // Lấy tên collection
+    const action = commandParts['action']; // Hành động (find, insertOne, ...)
+
+    // Truy cập vào collection
+    const model = mongoose.model('Item', itemSchema, collectionName);
+
+    let result;
+
+    // Thực hiện hành động dựa trên lệnh
+    if (action === 'find') {
+      const filter = commandParts.args[0];
+      result = await model.find(filter);
+    } else if (action === 'insertOne') {
+      const document = commandParts.args[0]
+      result = await model.create(document);
+    } else if (action === 'updateOne') {
+      const filter = commandParts.args[0]
+      const update = commandParts.args[1]
+      result = await model.updateOne(filter, update);
+    } else if (action === 'deleteOne') {
+      const filter = commandParts.args[0]
+      result = await model.deleteOne(filter);
+    } else {
+      throw new Error('Unsupported action');
+    }
+    res.json(result);
+  } catch (error) {
+    // console.error('Error executing query:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+
+app.post('/api/cassandra/execute', async (req, res) => {
+  const { query } = req.body;
+  // console.log(query)
+  try {
+    const result = await client.execute(query);
+    if (result.rows) {
+      res.json(result.rows);
+    }
+    else {
+      res.json("Execute success!");
+    }
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
 
 // Cấu hình để phục vụ các file tĩnh (như HTML, CSS, JS)
 app.use(express.static('public'));

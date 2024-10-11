@@ -8,7 +8,8 @@ import { useGlobalVar } from './context/GlobalVarContext';
 import bootstrapCss from './css/bootstrap.module.css';
 
 function App() {
-  const { selected,message, message2, setMessage, setMessage2, tables, setTables, tableUse, setTableUse,setColumns,setTimeQuery,timeQuery} = useGlobalVar();
+  const { reload,setReload,setSpeed, setLoading, selected, message, message2, setMessage, setMessage2,
+    tables, setTables, tableUse, setTableUse, columns, setColumns, setTimeQuery, timeQuery, setPrimaryKey } = useGlobalVar();
 
 
   useEffect(() => {
@@ -19,19 +20,32 @@ function App() {
     fetchData();
     // console.log(message)
     fetchColumnName();
-  }, [tableUse]);
+  }, [tableUse,reload]);
 
-  useEffect(()=>{
-    if(tableUse!=null){
-      if(selected ==="showAll"){
+  useEffect(() => {
+    if (tableUse != null) {
+      if (selected === "showAll") {
         fetchData();
       }
     }
     setTimeQuery()
-  },[selected])
+  }, [selected,reload])
+
+  useEffect(() => {
+    if (columns) {
+      var key = []
+      for (var i = 0; i < columns.length; i++) {
+        if (columns[i].kind === "partition_key" || columns[i].kind === "clustering_key") {
+          key.push(columns[i].column_name);
+        }
+      }
+      setPrimaryKey(key)
+    }
+  }, [columns, setPrimaryKey,reload])
 
   const fetchData = async () => {
     try {
+      // setLoading(true)
       // console.log(tableUse)
       if (tableUse !== "" && tableUse != null) {
         const response = await axios(`http://localhost:3000/mongoDB/getAllData`, {
@@ -46,7 +60,9 @@ function App() {
         });
         setMessage2(response2.data);
         setMessage(response.data);
-        setTimeQuery({"mongo":response.data.time_finding,"cassandra":response2.data.time_finding})
+        setTimeQuery({ "mongo": response.data.time_finding, "cassandra": response2.data.time_finding })
+        // setSpeed(0.2)
+        // setLoading(true)
       }
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -64,23 +80,25 @@ function App() {
       console.error('Error fetching data:', error);
     }
   };
-  const fetchColumnName = async() =>{
-    try{
+  const fetchColumnName = async () => {
+    try {
       const response = await axios('http://localhost:3000/getColumns',
-        {params:
+        {
+          params:
           {
-            table:tableUse
+            table: tableUse
           }
         }
       );
       setColumns(response.data);
-      console.log(response.data);
+      // console.log(response.data);
 
     }
-    catch(error){
+    catch (error) {
       console.log(error)
     }
   }
+
 
   return (
     <div className="App">
@@ -111,13 +129,13 @@ function App() {
               </thead>
               <tbody>
                 <tr>
-                  <td>{timeQuery !== ""&&timeQuery!=null ? timeQuery.mongo + "ms" : <div>0ms</div>}</td>
-                  <td>{timeQuery !== ""&&timeQuery!=null ? timeQuery.cassandra + "ms" : <div>0ms</div>}</td>
+                  <td>{timeQuery !== "" && timeQuery != null ? timeQuery.mongo + "ms" : <div>0ms</div>}</td>
+                  <td>{timeQuery !== "" && timeQuery != null ? timeQuery.cassandra + "ms" : <div>0ms</div>}</td>
                 </tr>
               </tbody>
             </table>
           </div>
-          
+
         </div>
       </div>
     </div>

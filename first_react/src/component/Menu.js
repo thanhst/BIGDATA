@@ -22,7 +22,7 @@ function Menu() {
         }
     };
     const [title, setTitle] = useState('Hiển thị tất cả danh sách');
-    const { tables, setTables,tableUse,setTableUse } = useGlobalVar();
+    const { tables, setTables, tableUse, setTableUse,setFormData } = useGlobalVar();
     return (
         <div>
             <nav className={`${bootstrapCss.menu} ${bootstrapCss.d_flex} ${bootstrapCss.justify_between}`}>
@@ -35,11 +35,11 @@ function Menu() {
                 </ul>
                 <div className={`${bootstrapCss.d_flex} ${bootstrapCss.align_center}`} style={{ gap: '10px' }}>
                     <span>Table:</span>
-                    <select className={`${bootstrapCss.table_select}`}  onChange={(e)=>setTableUse(e.target.value)}>
-                        {tables.table_mongo!=null && tables.table_mongo.map((key, index) => (
+                    <select className={`${bootstrapCss.table_select}`} onChange={(e) => setTableUse(e.target.value)}>
+                        {tables.table_mongo != null && tables.table_mongo.map((key, index) => (
                             <option value={key} key={key}>{key}</option>
                         ))}
-                        <option selected>Vui lòng chọn bảng để thực hiện truy vấn</option>
+                        <option>Vui lòng chọn bảng để thực hiện truy vấn</option>
                     </select>
                 </div>
             </nav >
