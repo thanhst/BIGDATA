@@ -92,8 +92,8 @@ function Delete() {
         );
     }
     return (
-        <div style={{ display: "flex", justifyContent: "center" }}>
-            <div style={{ display: "flex" }}><div className={`${bootstrapCss.div_cassandra} ${bootstrapCss.border}`}>
+        <div style={{ display: "flex", justifyContent: "start" }}>
+            <div style={{ display: "flex",width:"80%" }}><div className={`${bootstrapCss.div_cassandra} ${bootstrapCss.border}`}>
                 <div style={{ padding: '10px' }} >Data</div>
                 {message2 !== "" && message2 != null ? renderTableDelete(message2.table) : <div>Chưa có thông tin gì về dữ liệu</div>}
             </div>

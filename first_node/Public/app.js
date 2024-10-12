@@ -140,7 +140,7 @@ async function getCollections() {
 }
 
 async function getTables() {
-  const query = `SELECT table_name FROM system_schema.tables WHERE keyspace_name='bigdata'`;
+  const query = `SELECT table_name FROM system_schema.tables WHERE keyspace_name='${dbname}'`;
   const result = await client.execute(query);
   return result.rows.map(row => row.table_name);
 }
@@ -149,7 +149,7 @@ async function getColumn(tableUse) {
   const query = 'SELECT column_name,type,kind FROM system_schema.columns WHERE keyspace_name = ? AND table_name = ?';
   try {
     // Thực thi truy vấn với tham số
-    const result = await client.execute(query, ['bigdata', tableUse.toLowerCase()], { prepare: true });
+    const result = await client.execute(query, [`${dbname}`, tableUse.toLowerCase()], { prepare: true });
     // Trả về danh sách tên các cột
     return result.rows
   } catch (error) {
